@@ -1,38 +1,28 @@
-"""
-Paper Digest - Fetchers Package
-
-Each fetcher searches a specific journal/source and returns a standardized
-list of paper metadata dicts.
-"""
+"""Fetchers package"""
 
 from .base import BaseFetcher, PaperMetadata
-from .biorxiv import BioRxivFetcher
 from .pubmed import PubMedFetcher
+from .biorxiv import BioRxivFetcher
 from .nature import NatureFetcher
 from .cell import CellFetcher
 from .wiley import WileyFetcher
+from .openalex import OpenAlexFetcher
+from .semantic_scholar import SemanticScholarFetcher
 
-# Registry mapping fetcher name → class
-FETCHER_REGISTRY = {
-    "BioRxivFetcher": BioRxivFetcher,
-    "PubMedFetcher": PubMedFetcher,
-    "NatureFetcher": NatureFetcher,
-    "CellFetcher": CellFetcher,
-    "WileyFetcher": WileyFetcher,
+
+_REGISTRY = {
+    "PubMedFetcher":          PubMedFetcher,
+    "BioRxivFetcher":         BioRxivFetcher,
+    "NatureFetcher":          NatureFetcher,
+    "CellFetcher":            CellFetcher,
+    "WileyFetcher":           WileyFetcher,
+    "OpenAlexFetcher":        OpenAlexFetcher,
+    "SemanticScholarFetcher": SemanticScholarFetcher,
 }
 
 
 def get_fetcher(name: str, **kwargs) -> BaseFetcher:
-    """Get a fetcher instance by name."""
-    cls = FETCHER_REGISTRY.get(name)
-    if cls is None:
-        raise ValueError(f"Unknown fetcher: {name}. Available: {list(FETCHER_REGISTRY.keys())}")
+    cls = _REGISTRY.get(name)
+    if not cls:
+        raise ValueError(f"Unknown fetcher: {name}")
     return cls(**kwargs)
-
-
-__all__ = [
-    "BaseFetcher", "PaperMetadata",
-    "BioRxivFetcher", "PubMedFetcher", "NatureFetcher",
-    "CellFetcher", "WileyFetcher",
-    "FETCHER_REGISTRY", "get_fetcher",
-]

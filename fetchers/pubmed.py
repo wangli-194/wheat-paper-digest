@@ -82,27 +82,32 @@ class PubMedFetcher(BaseFetcher):
         self, keywords: list[str], lookback_days: int = 1
     ) -> list[PaperMetadata]:
         """
-        Search PubMed for recent papers using keyword OR query.
-        No MeSH restriction to avoid missing relevant papers.
+        Search PubMed for recent plant-related papers.
+
+        Strategy:
+        1. Build a comprehensive plant biology query
+        2. Filter by date range
+        3. Fetch detailed metadata for each paper
         """
         today = date.today()
         start_date = today - timedelta(days=max(lookback_days, 1))
 
-        # 关键词 OR 查询，覆盖所有关键词
+        # Build the search query
+        query_parts = [PLANT_SEARCH_FILTER]
+
+        # Add keyword-based filters
         if keywords:
-            kw_query = " OR ".join(
-                f'"{kw}"[Title/Abstract]' for kw in keywords
-            )
-        else:
-            kw_query = PLANT_SEARCH_FILTER
+            kw_query = " OR ".join(f'"{kw}"[Title/Abstract]' for kw in keywords[:30])
+            query_parts.append(f"({kw_query})")
 
-        # 日期范围（PubMed 支持 YYYY/MM/DD 格式）
+        # Date range
         date_term = (
-            f'("{start_date.strftime("%Y/%m/%d")}"[Date - Publication] : '
-            f'"{today.strftime("%Y/%m/%d")}"[Date - Publication])'
+            f'("{start_date.isoformat()}"[Date - Publication] : '
+            f'"{today.isoformat()}"[Date - Publication])'
         )
+        query_parts.append(date_term)
 
-        query = f"({kw_query}) AND {date_term}"
+        query = " AND ".join(query_parts)
 
         logger.info(
             "[%s] Searching: date=%s to %s, query_length=%d",
@@ -135,8 +140,9 @@ class PubMedFetcher(BaseFetcher):
         }
 
         try:
-            resp = self.session.get(
-                self.ESEARCH_URL, params=params, timeout=30
+            # 用 POST 避免查询语句过长导致 414 错误
+            resp = self.session.post(
+                self.ESEARCH_URL, data=params, timeout=30
             )
             resp.raise_for_status()
             data = resp.json()

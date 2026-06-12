@@ -38,7 +38,12 @@ class PaperMetadata:
 
     def __post_init__(self):
         if not self.unique_id:
-            raw = f"{self.title}|{self.doi}|{self.source}"
+            # 有 DOI 就用 DOI 去重，避免同一篇论文被不同来源重复收录
+            if self.doi:
+                raw = self.doi.strip().lower()
+            else:
+                # 没有 DOI 用标题（标准化处理：小写+去除空格）
+                raw = self.title.lower().strip()
             self.unique_id = hashlib.md5(raw.encode()).hexdigest()[:12]
 
     def to_dict(self) -> dict:
