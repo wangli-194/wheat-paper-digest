@@ -1,146 +1,182 @@
-# 🌾 小麦抗病·植物免疫 论文日报
+# 🌾 Wheat Disease Resistance · Plant Immunity — Daily Paper Digest
 
-自动从 PubMed、bioRxiv、Nature Plants 等期刊检索小麦抗病和植物免疫方向的最新论文，使用 DeepSeek AI 进行相关性筛选和结构化分析，每天生成一份卡片式 HTML 简报。
+An automated tool that retrieves the latest research papers on **wheat disease resistance** and **plant immunity** from PubMed, OpenAlex, Semantic Scholar, bioRxiv, and major journals. Papers are filtered and analyzed by DeepSeek AI, generating a clean card-style HTML digest every morning.
 
-## 效果预览
+## Preview
 
-每篇论文以卡片形式展示，包含：
-- 🌾 相关性评分（小麦直接相关 / 植物抗病相关）
-- 🏛 研究单位
-- 🔬 研究背景
-- 🧪 研究方法
-- 📊 实验结果
-- 💬 讨论
-- ⭐ 创新点
-- 🌾 与小麦抗病育种的关联
+Each paper is displayed as a card with:
+- ★ Relevance score (wheat-specific vs. plant immunity)
+- 🏛 Research institution
+- 🔬 Background & scientific question
+- 🧪 Methods
+- 📊 Key results
+- 💬 Discussion & breeding value
+- ⭐ Innovation highlights
+- 🌾 Relevance to wheat disease resistance breeding
 
-## 数据来源
+## Data Sources
 
-| 数据源 | 说明 |
-|--------|------|
-| PubMed | NCBI 文献数据库，覆盖所有主流期刊 |
-| bioRxiv | 生物学预印本 |
-| Nature Plants | 植物学顶刊 |
-| Molecular Plant | 植物分子生物学顶刊 |
-| The Plant Cell | 植物细胞生物学权威期刊 |
-| New Phytologist | 植物生态与生理 |
-| Molecular Plant Pathology | 植物病理专业期刊 |
-| Plant Disease / Phytopathology | APS 旗舰期刊 |
-| Frontiers in Plant Science | 开放获取，发文量大 |
-| ... | 共 20+ 个数据源 |
+| Source | Description |
+|--------|-------------|
+| **OpenAlex** | 250M+ papers, best coverage, stable API |
+| **Semantic Scholar** | AI-powered search, 200M+ papers |
+| **PubMed** | Authoritative biomedical database |
+| **bioRxiv** | Latest preprints |
+| Nature Plants | Top plant science journal |
+| Molecular Plant | Leading plant molecular biology journal |
+| The Plant Cell | Authoritative plant cell biology |
+| New Phytologist | Plant ecology & physiology |
+| Molecular Plant Pathology | Plant pathology specialist |
+| Plant Disease | APS flagship journal |
+| Frontiers in Plant Science | High-volume open access |
+| PLOS Pathogens | Pathogen-host interactions |
 
-## 安装
+## Key Features
 
-### 1. 克隆仓库
+- **Two-stage AI filtering**: Quick relevance scoring (0-10) then deep structured analysis
+- **Focus on wheat**: Prioritizes stripe rust, powdery mildew, Fusarium head blight, R genes, NLR proteins, QTL mapping
+- **Deduplication**: DOI-based deduplication across all sources
+- **Daily automation**: Windows Task Scheduler support, auto-retry on network failure
+- **Clean HTML output**: Card-style layout, opens directly in any browser
+
+## Installation
+
+### 1. Clone the repository
 
 ```bash
-git clone https://github.com/你的用户名/wheat-paper-digest.git
+git clone https://github.com/wangli-194/wheat-paper-digest.git
 cd wheat-paper-digest
 ```
 
-### 2. 安装依赖
+### 2. Install dependencies
 
 ```bash
 pip install -r requirements.txt
 ```
 
-### 3. 配置 API Key
+### 3. Configure API keys
 
-复制示例文件并填入你的密钥：
+Copy the example file and fill in your keys:
 
 ```bash
 copy .env.example .env
 ```
 
-用记事本打开 `.env`，填入：
+Open `.env` and add:
 
 ```
-DEEPSEEK_API_KEY=你的DeepSeek API Key
-PUBMED_EMAIL=你的邮箱（PubMed要求，随便填一个）
+DEEPSEEK_API_KEY=your_deepseek_api_key_here
+PUBMED_EMAIL=your_email@example.com
 ```
 
-DeepSeek API Key 在 [platform.deepseek.com](https://platform.deepseek.com) 注册后获取，费用极低（约¥1可分析500篇论文）。
+Get your DeepSeek API key at [platform.deepseek.com](https://platform.deepseek.com). Cost is extremely low (~¥1 per 500 papers analyzed).
 
-## 使用方法
+> OpenAlex and Semantic Scholar require **no API key**.
 
-### 立即运行一次
+## Usage
+
+### Run once
 
 ```bash
 python main.py
 ```
 
-生成的 HTML 简报在 `output/` 文件夹，用浏览器打开即可。
+The HTML digest is saved to `output/`. Open it in any browser.
 
-### 每天定时运行（Windows 任务计划）
+### Schedule daily at 8:00 AM (Windows)
 
-1. 按 `Win+R`，输入 `taskschd.msc`
-2. 创建基本任务，每天 08:00 执行
-3. 程序：`python.exe` 的完整路径
-4. 参数：`main.py`
-5. 起始位置：本项目文件夹路径
+Set up Windows Task Scheduler:
+1. Program: full path to `python.exe`
+2. Arguments: `main.py`
+3. Start in: path to this project folder
+4. Trigger: Daily at 08:00
+5. Settings: Retry on failure every 30 minutes, up to 3 times
 
-### 守护进程模式
-
-```bash
-python main.py --schedule 08:00
-```
-
-### 常用参数
+### Common options
 
 ```bash
-python main.py --lookback 7      # 检索最近7天（默认7天）
-python main.py --lookback 3      # 检索最近3天
+python main.py --lookback 7    # Search last 7 days (default)
+python main.py --lookback 3    # Search last 3 days
 ```
 
-## 筛选逻辑
+## How It Works
 
-采用两阶段 AI 筛选：
+```
+Fetch papers from all sources
+        ↓
+Deduplicate by DOI
+        ↓
+Stage 1: AI relevance scoring (0-10) for each paper
+        ↓
+Filter: keep papers scoring >= 5
+        ↓
+Stage 2: Deep structured analysis for top papers
+        ↓
+Generate HTML digest (top 8 most relevant)
+```
 
-1. **快速评分**：DeepSeek 对每篇论文打相关性分数（0-10分）
-   - 9-10分：直接研究小麦抗病（锈病/白粉病/赤霉病等）
-   - 7-8分：植物抗病机制，对小麦研究有参考价值
-   - 5-6分：植物免疫信号通路，间接相关
-   - 低于5分：过滤不收录
+**Relevance scoring:**
+- **9-10**: Directly studies wheat disease resistance (rust, powdery mildew, FHB, R genes, NLR, QTL)
+- **7-8**: Plant disease resistance mechanisms with direct reference value for wheat
+- **5-6**: Plant immunity / defense signaling (SA, JA, ETI, PTI), indirect relevance
+- **< 5**: Filtered out
 
-2. **深度分析**：对高分论文进行结构化分析，生成各维度摘要
+## Configuration
 
-每期收录约 6-8 篇最相关论文。
+Edit `config.py` to adjust:
 
-## 配置说明
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `LOOKBACK_DAYS` | 7 | Days to look back for new papers |
+| `TARGET_PAPERS` | 8 | Target number of papers per digest |
+| `RELEVANCE_THRESHOLD` | 5 | Minimum AI relevance score (0-10) |
+| `MAX_PAPERS_TO_ANALYZE` | 30 | Max papers sent to AI for deep analysis |
 
-编辑 `config.py` 可调整：
-
-| 参数 | 默认值 | 说明 |
-|------|--------|------|
-| `LOOKBACK_DAYS` | 7 | 检索回溯天数 |
-| `TARGET_PAPERS` | 8 | 每期目标篇数 |
-| `RELEVANCE_THRESHOLD` | 5 | 相关性最低分数 |
-| `MAX_PAPERS_TO_ANALYZE` | 30 | 最多送 AI 分析篇数 |
-
-## 项目结构
+## Project Structure
 
 ```
 wheat-paper-digest/
-├── main.py              # 主程序入口
-├── config.py            # 配置文件（关键词、期刊、参数）
-├── analyzer.py          # DeepSeek AI 分析模块
-├── html_generator.py    # HTML 简报生成器
-├── fetchers/            # 各期刊数据抓取模块
-│   ├── pubmed.py        # PubMed / NCBI
-│   ├── biorxiv.py       # bioRxiv
-│   ├── nature.py        # Nature 系列
-│   ├── cell.py          # Cell / Molecular Plant 等
-│   └── wiley.py         # Wiley 系列
-├── notifier.py          # 邮件通知模块
-├── .env.example         # 环境变量示例
-├── requirements.txt     # Python 依赖
-└── output/              # 生成的简报（不含在仓库中）
+├── main.py                  # Entry point
+├── config.py                # Keywords, sources, parameters
+├── analyzer.py              # DeepSeek AI analysis module
+├── html_generator.py        # HTML digest generator
+├── notifier.py              # Email notification module
+├── fetchers/
+│   ├── base.py              # Base fetcher & PaperMetadata
+│   ├── openalex.py          # OpenAlex fetcher
+│   ├── semantic_scholar.py  # Semantic Scholar fetcher
+│   ├── pubmed.py            # PubMed / NCBI fetcher
+│   ├── biorxiv.py           # bioRxiv fetcher
+│   ├── nature.py            # Nature journals RSS fetcher
+│   ├── cell.py              # Cell / Molecular Plant RSS fetcher
+│   └── wiley.py             # Wiley journals RSS fetcher
+├── .env.example             # Environment variables template
+├── requirements.txt         # Python dependencies
+└── output/                  # Generated digests (git-ignored)
 ```
 
-## 作者
+## Contributing
 
-作物遗传育种 / 小麦抗病方向研究者开发，欢迎同领域研究者使用和改进。
+Contributions are welcome! Areas where help is appreciated:
+
+- **More data sources**: Europe PMC, CNKI (Chinese papers), CrossRef
+- **Better relevance scoring**: Fine-tuning prompts for specific wheat diseases
+- **Email delivery**: Improving the email notification module
+- **Full-text retrieval**: Fetching abstracts from DOI when RSS provides none
+- **Multi-language support**: Chinese wheat research community is very active
+
+Please open an issue or submit a pull request.
+
+## Background
+
+Developed by a researcher in **wheat genetics and disease resistance breeding**. The goal is to automatically track the latest publications on wheat rust (stripe rust, leaf rust, stem rust), powdery mildew, Fusarium head blight, and plant immunity mechanisms — saving hours of manual literature searching each week.
+
+If you work in plant pathology, crop breeding, or plant immunity, this tool is for you.
 
 ## License
 
-MIT License
+MIT License — free to use, modify, and distribute.
+
+---
+
+*Generated digests are for reference only. Please consult the original papers for details.*
