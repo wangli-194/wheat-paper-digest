@@ -1,10 +1,5 @@
 """
-bioRxiv / medRxiv paper fetcher.
-
-Uses the bioRxiv Content API:
-https://api.biorxiv.org/details/biorxiv/<date_range>/<cursor>/<max_results>
-
-Reference: https://www.biorxiv.org/about/tdm
+bioRxiv paper fetcher - 按关键词搜索，只拉取相关论文
 """
 
 import logging
@@ -18,29 +13,12 @@ from .base import BaseFetcher, PaperMetadata
 
 logger = logging.getLogger(__name__)
 
-# bioRxiv subject areas relevant to plant biology
-PLANT_COLLECTIONS = [
-    "plant_biology",
-    "genetics",
-    "genomics",
-    "molecular_biology",
-    "developmental_biology",
-    "ecology",
-    "evolutionary_biology",
-    "microbiology",
-    "systems_biology",
-    "synthetic_biology",
-    "agricultural_sciences",
-]
-
-# Core plant-related subject area that we always search
-PRIMARY_COLLECTION = "plant_biology"
-
 
 class BioRxivFetcher(BaseFetcher):
     """Fetcher for bioRxiv preprint server."""
 
-    API_BASE = "https://api.biorxiv.org"
+    API_BASE    = "https://api.biorxiv.org"
+    SEARCH_BASE = "https://api.biorxiv.org/search"   # 搜索端点
 
     def __init__(
         self,
@@ -50,69 +28,70 @@ class BioRxivFetcher(BaseFetcher):
         **kwargs,
     ):
         super().__init__(source_name=source_name, max_results=max_results)
-        self.server = server  # "biorxiv" or "medrxiv"
+        self.server = server
         self.session = requests.Session()
         self.session.headers.update({
             "User-Agent": "PaperDigest/1.0 (mailto:paper-digest@example.com)",
             "Accept": "application/json",
         })
 
-    def fetch(
-        self, keywords: list[str], lookback_days: int = 1
-    ) -> list[PaperMetadata]:
-        """
-        Fetch recent plant-related papers from bioRxiv.
-
-        Strategy:
-        1. Query the plant_biology collection for recent dates
-        2. Also search any papers with plant keywords in title/abstract
-        3. Deduplicate and filter
-        """
-        today = date.today()
+    def fetch(self, keywords: list[str], lookback_days: int = 7) -> list[PaperMetadata]:
+        today      = date.today()
         start_date = today - timedelta(days=max(lookback_days, 3))
-        all_papers: list[PaperMetadata] = []
 
-        # Fetch from plant biology collection
-        logger.info(
-            "[%s] Fetching papers from %s to %s (collection: plant_biology)",
-            self.source_name, start_date, today,
-        )
+        # 核心关键词：只取最相关的，避免搜索结果太泛
+        core_keywords = [
+            "wheat rust", "stripe rust", "wheat resistance",
+            "wheat powdery mildew", "Fusarium head blight",
+            "Puccinia", "Blumeria graminis",
+            "wheat NLR", "wheat R gene", "Triticum aestivum resistance",
+            "plant immunity", "plant resistance", "NLR protein",
+            "effector triggered immunity", "plant pathogen",
+            "Magnaporthe", "Phytophthora resistance",
+        ]
 
-        papers = self._fetch_date_range(start_date, today)
-        logger.info("[%s] Retrieved %d papers from date range", self.source_name, len(papers))
+        all_papers: dict[str, PaperMetadata] = {}
 
-        # Filter by plant keywords
-        filtered = self._filter_by_keywords(papers, keywords)
-        # Sort by date descending
-        filtered.sort(key=lambda p: p.published_date or date.min, reverse=True)
+        # 方法1：用搜索 API 按关键词搜索（每次搜一个关键词）
+        logger.info("[%s] 使用搜索API检索，关键词数: %d", self.source_name, len(core_keywords))
+        for kw in core_keywords:
+            papers = self._search_keyword(kw, start_date, today)
+            for p in papers:
+                if p.unique_id not in all_papers:
+                    all_papers[p.unique_id] = p
+            if papers:
+                logger.info("[%s] 关键词'%s'找到%d篇", self.source_name, kw, len(papers))
+            time.sleep(0.3)
 
-        return filtered[:self.max_results]
+        # 方法2：兜底，从 plant_biology 分类拉取并过滤
+        if not all_papers:
+            logger.info("[%s] 搜索API无结果，改用分类API兜底", self.source_name)
+            raw = self._fetch_date_range(start_date, today)
+            filtered = self._filter_by_keywords(raw, keywords)
+            for p in filtered:
+                all_papers[p.unique_id] = p
 
-    def _fetch_date_range(
-        self, start: date, end: date
-    ) -> list[PaperMetadata]:
-        """
-        Fetch papers from bioRxiv within a date range using the content API.
-        Uses cursor-based pagination.
-        """
-        papers = []
+        result = list(all_papers.values())
+        result.sort(key=lambda p: p.published_date or date.min, reverse=True)
+        logger.info("[%s] 共检索到 %d 篇相关论文", self.source_name, len(result))
+        return result[:self.max_results]
+
+    def _search_keyword(self, keyword: str, start: date, end: date) -> list[PaperMetadata]:
+        """用 bioRxiv 搜索API按单个关键词搜索"""
+        # bioRxiv 搜索 API: /search/{server}/{term}/{start}/{end}/{cursor}
         cursor = 0
-        max_pages = 5  # Safety limit
+        papers = []
+        term = keyword.replace(" ", "%20")
+        date_str = f"{start.isoformat()}/{end.isoformat()}"
 
-        date_interval = f"{start.isoformat()}/{end.isoformat()}"
-
-        for _ in range(max_pages):
-            url = f"{self.API_BASE}/details/{self.server}/{date_interval}/{cursor}/100"
-
+        for _ in range(2):  # 最多翻2页
+            url = f"{self.SEARCH_BASE}/{self.server}/{term}/{date_str}/{cursor}/25"
             try:
-                resp = self.session.get(url, timeout=30)
+                resp = self.session.get(url, timeout=20)
                 resp.raise_for_status()
                 data = resp.json()
-            except requests.RequestException as e:
-                logger.error("[%s] API request failed: %s", self.source_name, e)
-                break
-            except ValueError as e:
-                logger.error("[%s] JSON parse error: %s", self.source_name, e)
+            except Exception as e:
+                logger.debug("[%s] 搜索失败(%s): %s", self.source_name, keyword, e)
                 break
 
             collection = data.get("collection", [])
@@ -120,60 +99,67 @@ class BioRxivFetcher(BaseFetcher):
                 break
 
             for item in collection:
-                paper = self._parse_item(item)
-                if paper:
-                    papers.append(paper)
+                p = self._parse_item(item)
+                if p:
+                    papers.append(p)
 
-            # Cursor pagination
             messages = data.get("messages", [])
             cursor = messages[0].get("cursor", 0) if messages else 0
-            count = messages[0].get("count", 0) if messages else 0
+            if cursor == 0:
+                break
+            time.sleep(0.2)
 
-            logger.debug(
-                "[%s] Page cursor=%d, got %d papers (total: %d)",
-                self.source_name, cursor, count, len(papers),
-            )
+        return papers
 
-            if cursor == 0 or count == 0:
+    def _fetch_date_range(self, start: date, end: date) -> list[PaperMetadata]:
+        """按日期范围拉取（兜底方法）"""
+        papers = []
+        cursor = 0
+        date_interval = f"{start.isoformat()}/{end.isoformat()}"
+
+        for _ in range(3):
+            url = f"{self.API_BASE}/details/{self.server}/{date_interval}/{cursor}/100"
+            try:
+                resp = self.session.get(url, timeout=30)
+                resp.raise_for_status()
+                data = resp.json()
+            except Exception as e:
+                logger.error("[%s] API request failed: %s", self.source_name, e)
                 break
 
-            time.sleep(0.5)  # Rate limiting
+            collection = data.get("collection", [])
+            if not collection:
+                break
+
+            for item in collection:
+                p = self._parse_item(item)
+                if p:
+                    papers.append(p)
+
+            messages = data.get("messages", [])
+            cursor = messages[0].get("cursor", 0) if messages else 0
+            if cursor == 0:
+                break
+            time.sleep(0.5)
 
         return papers
 
     def _parse_item(self, item: dict) -> Optional[PaperMetadata]:
-        """Parse a bioRxiv API item into PaperMetadata."""
         try:
             title = item.get("title", "").strip()
             if not title:
                 return None
 
-            doi = item.get("doi", "")
-            abstract = item.get("abstract", "").strip()
-            authors_str = item.get("authors", "")
-            authors = [a.strip() for a in authors_str.split(";") if a.strip()] if authors_str else []
-
-            # bioRxiv API provides author list but not affiliations in the detail view
-            affiliations: list[str] = []
-
-            # Author affiliations are sometimes embedded in the author string
-            # e.g., "Smith J (Harvard University)"
-            author_corresponding = item.get("author_corresponding", "")
-            institution = item.get("author_corresponding_institution", "")
-            if institution:
-                affiliations.append(institution.strip())
-
-            # Date parsing
-            date_str = item.get("date", "") or item.get("server_date", "")
-            pub_date = self._parse_date(date_str) if date_str else None
-
-            # Category
-            category = item.get("category", "")
-
-            # URL
-            url = f"https://doi.org/{doi}" if doi else ""
-            if not url and doi:
-                url = f"https://www.biorxiv.org/content/{doi}"
+            doi          = item.get("doi", "")
+            abstract     = item.get("abstract", "").strip()
+            authors_str  = item.get("authors", "")
+            authors      = [a.strip() for a in authors_str.split(";") if a.strip()]
+            institution  = item.get("author_corresponding_institution", "")
+            affiliations = [institution.strip()] if institution else []
+            date_str     = item.get("date", "") or item.get("server_date", "")
+            pub_date     = self._parse_date(date_str) if date_str else None
+            category     = item.get("category", "")
+            url          = f"https://doi.org/{doi}" if doi else ""
 
             return PaperMetadata(
                 title=title,
@@ -191,18 +177,3 @@ class BioRxivFetcher(BaseFetcher):
         except Exception as e:
             logger.warning("[%s] Failed to parse item: %s", self.source_name, e)
             return None
-
-    def search_by_abstract(
-        self, keywords: list[str], lookback_days: int = 7
-    ) -> list[PaperMetadata]:
-        """
-        Alternative search using bioRxiv's search endpoint.
-        Searches the abstract/title fields for specific terms.
-        """
-        papers = []
-        today = date.today()
-        start_date = today - timedelta(days=lookback_days)
-
-        # Use the content API with date range, then filter
-        all_papers = self._fetch_date_range(start_date, today)
-        return self._filter_by_keywords(all_papers, keywords)
